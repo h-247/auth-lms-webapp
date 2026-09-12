@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@plugin "@tailwindcss/typography";
+
+/* 1. Design Tokens */
+@import "../styles/tokens/colors.css";
+@import "../styles/tokens/motion.css";
+
+/* 2. Base & Resets */
+@import "../styles/base/reset.css";
+@import "../styles/base/scrollbar.css";
+
+/* 3. Custom Utilities */
+@import "../styles/utilities/layout.css";
+@import "../styles/utilities/typography.css";
+
+/* 4. Component Animations */
+@import "../styles/animations/components.css";

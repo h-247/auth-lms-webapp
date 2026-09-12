@@ -1,0 +1,250 @@
+import { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+
+const sessionCookieName = process.env.NODE_ENV === "production"
+  ? "__Secure-bdc.session-token.v2"
+  : "bdc.session-token.v2";
+
+declare module "next-auth" {
+  interface Session {
+    accessToken?: string;
+    error?: string;
+    user: {
+      id?: number | string;
+      name?: string | null;
+      email?: string | null;
+      role?: string;
+      image?: string | null;
+      profilePicture?: string | null;
+    };
+  }
+
+  interface User {
+    role?: string;
+    token?: string;
+    profilePicture?: string | null;
+  }
+
+  interface JWT {
+    role?: string;
+    accessToken?: string;
+    refreshToken?: string;
+    accessTokenExpires?: number;
+    error?: string;
+  }
+}
+
+async function refreshAccessToken(token: any) {
+  try {
+    const response = await fetch(`${process.env.BACKEND_URL}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: token.refreshToken }),
+    });
+
+    if (!response.ok) {
+        throw new Error("Refresh failed");
+    }
+
+    const data = await response.json();
+    
+    // Extract cookies
+    const setCookie = response.headers.get("set-cookie");
+    const authToken = setCookie?.match(/authToken=([^;]+)/)?.[1];
+    const refreshToken = setCookie?.match(/refreshToken=([^;]+)/)?.[1];
+
+    return {
+      ...token,
+      // Prefer the JSON body.  It is available consistently in Node's fetch;
+      // Set-Cookie is not exposed uniformly by every runtime/proxy.
+      accessToken: data.token || authToken || token.accessToken,
+      accessTokenExpires: Date.now() + data.expiresIn,
+      refreshToken: data.refreshToken || refreshToken || token.refreshToken,
+    };
+  } catch (error) {
+    console.error("RefreshAccessTokenError", error);
+    // Do not retain an expired Bearer token in a session that failed to
+    // refresh.  Retaining it makes protected pages look authenticated and
+    // causes the login <-> LMS redirect loop for old browser sessions.
+    return {
+      ...token,
+      accessToken: undefined,
+      refreshToken: undefined,
+      accessTokenExpires: 0,
+      error: "RefreshAccessTokenError",
+    };
+  }
+}
+
+export const authOptions: NextAuthOptions = {
+  providers: [
+    CredentialsProvider({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        try {
+          const res = await fetch(`${process.env.BACKEND_URL}/api/auth/login`, {
+            method: "POST",
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (!res.ok) {
+            return null;
+          }
+          
+          const data = await res.json();
+          const setCookie = res.headers.get("set-cookie");
+          const authToken = setCookie?.match(/authToken=([^;]+)/)?.[1] || data.token;
+          const refreshToken = setCookie?.match(/refreshToken=([^;]+)/)?.[1] || data.refreshToken;
+
+          return {
+            id: String(data.userId),
+            name: data.name,
+            email: data.email,
+            role: data.role,
+            profilePicture: data.profilePicture || null,
+            token: authToken || data.token,
+            refreshToken: refreshToken || data.refreshToken,
+            expiresIn: data.expiresIn,
+          };
+        } catch {
+          return null;
+        }
+      },
+    }),
+    CredentialsProvider({
+      id: "google-backend",
+      name: "Google Backend",
+      credentials: {
+        userId: { type: "text" },
+        name: { type: "text" },
+        email: { type: "text" },
+        role: { type: "text" },
+        profilePicture: { type: "text" },
+        token: { type: "text" },
+        refreshToken: { type: "text" },
+        expiresIn: { type: "text" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.userId || !credentials?.token) return null;
+        return {
+          id: credentials.userId,
+          name: credentials.name,
+          email: credentials.email,
+          role: credentials.role,
+          profilePicture: credentials.profilePicture || null,
+          token: credentials.token,
+          refreshToken: credentials.refreshToken,
+          expiresIn: Number(credentials.expiresIn),
+        };
+      },
+    }),
+  ],
+  session: {
+    strategy: "jwt",
+    maxAge: 7 * 24 * 60 * 60, // 7 days (NextAuth session can live longer because we refresh the underlying JWT)
+  },
+  // Rotate the cookie name after the legacy session/logout bug.  Old browser
+  // cookies are intentionally ignored instead of being able to resurrect a
+  // session after logout.
+  cookies: {
+    sessionToken: {
+      name: sessionCookieName,
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
+  callbacks: {
+    async jwt({ token, user, account }) {
+      // Initial sign in
+      if (user && account) {
+        return {
+          ...token,
+          accessToken: (user as any).token,
+          refreshToken: (user as any).refreshToken,
+          accessTokenExpires: Date.now() + ((user as any).expiresIn || 3600000),
+          role: (user as any).role,
+          picture: (user as any).profilePicture || (user as any).image,
+          sub: user.id,
+          user: {
+             name: user.name,
+             email: user.email,
+             image: (user as any).profilePicture || (user as any).image,
+             profilePicture: (user as any).profilePicture,
+          }
+        };
+      }
+
+      // Return previous token if the access token has not expired yet
+      // We refresh 5 minutes before actual expiry to be safe
+      const accessTokenExpires = Number((token as any).accessTokenExpires);
+      if (Number.isFinite(accessTokenExpires) && Date.now() < accessTokenExpires - 300000) {
+        return token;
+      }
+
+      // Access token has expired, try to update it
+      return refreshAccessToken(token);
+    },
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.role = token.role as string;
+        (session.user as any).id = Number(token.sub);
+        session.user.image = (token as any).picture || (token as any).user?.image || null;
+        session.user.profilePicture = (token as any).picture || (token as any).user?.profilePicture || null;
+        (session as any).error = token.error;
+        (session as any).accessToken = token.accessToken;
+      }
+      return session;
+    },
+    async signIn({ user, account, credentials }) {
+      // Automatically set authToken cookie on login
+      // next-auth handles this, but ensure backend tokens are also set
+      return true;
+    },
+    async redirect({ url, baseUrl }) {
+      // Ensure redirect is to a valid URL
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      if (new URL(url).origin === baseUrl) return url;
+      return baseUrl;
+    },
+  },
+  events: {
+    async signOut({ token }) {
+      // Optional: Call backend to revoke tokens
+      try {
+        const accessToken = (token as any).accessToken;
+        if (accessToken) {
+          await fetch(`${process.env.BACKEND_URL}/api/auth/logout`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${accessToken}`,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Logout error:", error);
+        // Continue logout even if backend fails
+      }
+    },
+  },
+  pages: {
+    signIn: "/login",
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+};

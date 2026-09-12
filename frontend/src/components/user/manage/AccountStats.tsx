@@ -1,0 +1,51 @@
+import { UserResponse } from "@/services/auth/userService";
+
+interface AccountStatsProps {
+  fullUserData: UserResponse | null;
+}
+
+interface StatItemProps {
+  value: string | number;
+  label: string;
+  colorClass: string;
+}
+
+function StatItem({ value, label, colorClass }: StatItemProps) {
+  return (
+    <div className="text-center py-2 min-w-0">
+      <div className={`text-xl sm:text-3xl font-extrabold leading-tight truncate ${colorClass}`}>{value}</div>
+      <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-500 mt-1">{label}</div>
+    </div>
+  );
+}
+
+export default function AccountStats({ fullUserData }: AccountStatsProps) {
+  return (
+    <div className="mt-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6">
+      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-50 mb-4 sm:mb-5">
+        Account Statistics
+      </h3>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 divide-x divide-slate-100 dark:divide-slate-800">
+        <StatItem
+          value={fullUserData?.totalScore ?? 0}
+          label="Tổng điểm"
+          colorClass="text-blue-600 dark:text-blue-400"
+        />
+        <StatItem
+          value={fullUserData?.active ? "Đang hoạt động" : "Ngừng hoạt động"}
+          label="Trạng thái"
+          colorClass={
+            fullUserData?.active
+              ? "text-green-600 dark:text-green-400"
+              : "text-slate-400 dark:text-slate-600"
+          }
+        />
+        <StatItem
+          value={fullUserData?.team || "N/A"}
+          label="Ban"
+          colorClass="text-slate-700 dark:text-slate-300"
+        />
+      </div>
+    </div>
+  );
+}

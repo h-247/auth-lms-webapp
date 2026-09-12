@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-13T22:32:00Z",
+  "title": "Design System: BDCHub Design System",
+  "extensions": {
+    "colorMeta": {
+      "primary-light": {
+        "role": "primary",
+        "displayName": "Tech Blue",
+        "canonical": "#2563eb",
+        "tonalRamp": ["#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#c084fc", "#e0e7ff", "#f5f3ff"]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "Cyber Cyan",
+        "canonical": "#06b6d4",
+        "tonalRamp": ["#0891b2", "#06b6d4", "#22d3ee", "#67e8f9", "#a5f3fc", "#cffafe", "#ecfeff", "#f0fdfa"]
+      },
+      "page-bg-dark": {
+        "role": "neutral",
+        "displayName": "Cosmic Dark Navy",
+        "canonical": "#050b18",
+        "tonalRamp": ["#020617", "#050b18", "#0b1528", "#0f1e35", "#1e293b", "#334155", "#475569", "#64748b"]
+      },
+      "glass-bg-light": {
+        "role": "neutral",
+        "displayName": "Glass Light",
+        "canonical": "rgba(255, 255, 255, 0.8)",
+        "tonalRamp": []
+      },
+      "glass-bg-dark": {
+        "role": "neutral",
+        "displayName": "Glass Dark",
+        "canonical": "rgba(15, 30, 53, 0.8)",
+        "tonalRamp": []
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display Hero",
+        "purpose": "Học tập titles and hero headers."
+      },
+      "body": {
+        "displayName": "Body Standard",
+        "purpose": "Standard values, descriptions, and labels."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card-elevation",
+        "value": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+        "purpose": "Ambient light-mode floating card container shadow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "standard-duration",
+        "value": "300ms",
+        "purpose": "Dynamic transitions for button hover states."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Used for moving to the next steps and major submit actions.",
+      "html": "<button class=\"ds-btn-primary\">Next Step</button>",
+      "css": ".ds-btn-primary { background: #2563eb; color: #ffffff; padding: 12px 28px; border-radius: 12px; font-weight: bold; border: none; transition: background 0.3s, transform 0.2s; cursor: pointer; } .ds-btn-primary:hover { background: #1d4ed8; } .ds-btn-primary:active { transform: scale(0.95); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Small action/edit buttons with flat background.",
+      "html": "<button class=\"ds-btn-secondary\">Edit Course</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; font-weight: bold; color: #334155; background: #f1f5f9; border: 1px solid transparent; border-radius: 12px; transition: all 0.2s; cursor: pointer; text-decoration: none; } .ds-btn-secondary:hover { background: #e2e8f0; border-color: #cbd5e1; } .ds-btn-secondary:active { transform: scale(0.95); }"
+    },
+    {
+      "name": "Tab Switcher Pills",
+      "kind": "nav",
+      "refersTo": "tab-pills-container",
+      "description": "Used for switching view tabs in the courses dashboard.",
+      "html": "<div class=\"ds-tab-pills\"><button class=\"ds-tab-pill ds-active\">Overview</button><button class=\"ds-tab-pill\">Content</button></div>",
+      "css": ".ds-tab-pills { display: inline-flex; align-items: center; gap: 4px; background: #f1f5f9; border: 1px solid rgba(226,232,240,0.6); border-radius: 12px; padding: 4px; } .ds-tab-pill { display: flex; align-items: center; gap: 8px; padding: 6px 16px; font-size: 12px; font-weight: bold; border-radius: 8px; border: none; background: transparent; color: #64748b; transition: all 0.2s; cursor: pointer; } .ds-tab-pill:hover { color: #0f172a; background: rgba(255,255,255,0.5); } .ds-tab-pill.ds-active { background: #ffffff; color: #2563eb; border: 1px solid rgba(226,232,240,0.4); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }"
+    },
+    {
+      "name": "Details Card",
+      "kind": "card",
+      "refersTo": "card-details",
+      "description": "Translucent backdrop container card for widgets.",
+      "html": "<div class=\"ds-details-card\"><h4 class=\"ds-details-title\">Configuration Status</h4><span class=\"ds-badge\">Published</span></div>",
+      "css": ".ds-details-card { background: rgba(255,255,255,0.8); border: 1px solid rgba(226,232,240,0.85); border-radius: 16px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: all 0.3s; } .ds-details-card:hover { border-color: #cbd5e1; box-shadow: 0 8px 30px rgba(0,0,0,0.03); } .ds-details-title { margin: 0 0 8px 0; font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; } .ds-badge { display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: bold; color: #16a34a; background: #dcfce7; border-radius: 9999px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "Standard LMS entry text field wrapped with Field primitive supporting label, hint, icons, and validation.",
+      "html": "<div class=\"ds-field-wrapper\"><label class=\"ds-field-label\">Course Title <span class=\"ds-required\">*</span></label><div class=\"ds-input-group\"><svg class=\"ds-left-icon\" viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input type=\"text\" class=\"ds-input-text\" placeholder=\"Search or enter title...\" /></div><span class=\"ds-field-hint\">Enter at least 3 characters.</span></div>",
+      "css": ".ds-field-wrapper { display: flex; flex-direction: column; gap: 6px; width: 100%; box-sizing: border-box; } .ds-field-label { font-size: 13px; font-weight: 600; color: #334155; } .ds-required { color: #ef4444; margin-left: 2px; } .ds-input-group { position: relative; display: flex; align-items: center; width: 100%; } .ds-left-icon { position: absolute; left: 14px; color: #94a3b8; pointer-events: none; } .ds-input-text { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px 16px 12px 42px; color: #0f172a; font-size: 14px; width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.2s, box-shadow 0.2s; } .ds-input-text:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2); background: #ffffff; } .ds-field-hint { font-size: 11px; color: #64748b; }"
+    },
+    {
+      "name": "AI Cowork Trigger Pill",
+      "kind": "chip",
+      "refersTo": "ai-cowork-pill",
+      "description": "Quieter floating glassmorphism pill for toggling the AI Cowork assistant drawer.",
+      "html": "<button class=\"ds-cowork-pill\"><svg class=\"ds-sparkle-icon\" viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z\"/></svg><span>AI Cowork</span></button>",
+      "css": ".ds-cowork-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 9999px; background: rgba(7, 14, 28, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(59, 130, 246, 0.2); color: #e2e8f0; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.1); } .ds-cowork-pill:hover { border-color: rgba(59, 130, 246, 0.4); box-shadow: 0 4px 12px rgba(0,0,0,0.15); } .ds-cowork-pill:active { transform: scale(0.95); } .ds-sparkle-icon { color: #22d3ee; }"
+    },
+    {
+      "name": "Ghost Action Control",
+      "kind": "button",
+      "refersTo": "ghost-action-control",
+      "description": "Minimalist borderless action button for toggles like sidebar collapse or console.",
+      "html": "<button class=\"ds-ghost-btn\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path d=\"M9 3v18\"/></svg><span>Lịch sử chat</span></button>",
+      "css": ".ds-ghost-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px; border-radius: 12px; background: transparent; border: none; color: #94a3b8; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; } .ds-ghost-btn:hover { color: #f8fafc; background: rgba(22, 38, 68, 0.8); } .ds-ghost-btn:active { transform: scale(0.95); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Tech-Academic Terminal",
+    "overview": "This system represents a clean, high-tech engineering aesthetic that blends computer science vibes with institutional structure. It is designed to be highly functional, structured, and formal, reflecting the engineering nature of the Big Data Club at HCMUT.\n\nThe visual system prioritizes clarity and efficiency, utilizing a strict grid layout, well-proportioned typography, and high-contrast form elements. The light mode uses clean slate tones, while the dark mode adopts a deep cosmic navy atmosphere with subtle vibrant blue/cyan glow highlights.",
+    "keyCharacteristics": [
+      "Technocentric Accent: High-contrast blue and cyan gradients that highlight active elements and progress metrics.",
+      "Structural Integrity: Reliance on solid borders and clear segmentations rather than heavy drop shadows, especially in dark mode.",
+      "User-Centric Progress: Seamless, auto-persisted multi-step form navigation with visible stepper indicators.",
+      "Visual Structure & Spacing: Centered main templates utilizing a standard max-w-7xl layout with unified responsive bounds (px-4 to px-8) and custom background blur panels."
+    ],
+    "rules": [
+      {
+        "name": "The Accent Rarity Rule",
+        "body": "Vibrant primary tech blue is reserved strictly for interactive indicators, primary call-to-actions, and active state indicators, ensuring they stand out immediately.",
+        "section": "colors"
+      },
+      {
+        "name": "The Flat Dark Rule",
+        "body": "Dark mode surfaces must never use drop shadows. Elevation is represented solely by border color intensity and container background light levels.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do preserve the multi-step progress when a user returns by reading from local storage.",
+      "Do use uppercase cyber badges for section tags and status updates.",
+      "Do use unified max-w-7xl layouts for dashboard and course layout screens."
+    ],
+    "donts": [
+      "Don't use generic black borders or flat gray highlights. Use themed slate-300 or dark blue/cyan borders instead.",
+      "Don't use standard heavy drop shadows on dark mode cards."
+    ]
+  }
+}

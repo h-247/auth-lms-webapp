@@ -1,0 +1,246 @@
+"use client";
+
+/**
+ * Student Course - Learn Page
+ * Route: /lms/student/courses/[courseId]/learn
+ *
+ * Displays the content viewer with prev/next navigation.
+ * Consumes StudentCourseContext from the parent layout.
+ *
+ * This route always renders learning content. Keep ContentViewer in the route
+ * bundle so the browser can mount a PDF as soon as content data arrives,
+ * without waiting for a second client-side JS chunk.
+ */
+
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
+import lmsService from "@/services/lms/lmsService";
+import ContentViewer from "@/components/lms/student/ContentViewer";
+import {
+  ArrowLeft, ChevronRight, BookOpen, BarChart3,
+} from "lucide-react";
+
+import { Badge, ContentTypeBadge } from "@/components/lms/shared";
+import { useStudentCourse } from "@/components/lms/student/StudentCourseContext";
+import { Content, Section } from "@/types";
+import { getSelectedLmsRole } from "@/lib/lms-navigation";
+
+import { PrevNextButtons } from "@/components/lms/student/learn/PrevNextButtons";
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
+export default function LearnPage() {
+  const router = useRouter();
+  const { courseId } = useParams<{ courseId: string }>();
+
+  const {
+    course, sections, sectionContents,
+    activeContent, setActiveContent,
+    completedIds, handleMarkComplete, markingComplete,
+    toggleSection,
+    coTeachers,
+  } = useStudentCourse();
+
+  const { data: session } = useSession();
+  const userId = session?.user ? Number((session.user as any).id || (session.user as any).userId) : undefined;
+  const [userRoles, setUserRoles] = useState<string[]>([]);
+  // The role the user explicitly picked on the workspace screen. A user may
+  // hold both TEACHER and STUDENT roles - when they chose to enter as a
+  // STUDENT they must get the pure student experience (quiz taking, not
+  // quiz management).
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    lmsService.getMyRoles().then(roles => setUserRoles(roles || [])).catch(() => {});
+    setSelectedRole(getSelectedLmsRole());
+  }, []);
+
+  const isCourseTeacher = useMemo(() => {
+    if (!userId || !course) return false;
+    if (selectedRole === "STUDENT") return false;
+    const isCreator = course.created_by === userId;
+    const isCo = coTeachers?.some((ct: any) => ct.user_id === userId);
+    const isAdmin = selectedRole === "ADMIN" || (!selectedRole && userRoles.includes("ADMIN"));
+    return isCreator || isCo || isAdmin;
+  }, [userId, course, coTeachers, userRoles, selectedRole]);
+
+  // Timer ref for auto-complete
+  const autoCompleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Auto-complete non-quiz mandatory content after 3s ──
+  useEffect(() => {
+    if (
+      activeContent &&
+      activeContent.is_mandatory &&
+      !completedIds.has(activeContent.id) &&
+      activeContent.type !== "QUIZ"
+    ) {
+      autoCompleteTimer.current = setTimeout(() => {
+        handleMarkComplete(activeContent.id);
+      }, 3000);
+    }
+    return () => {
+      if (autoCompleteTimer.current) clearTimeout(autoCompleteTimer.current);
+    };
+  }, [activeContent?.id]); // eslint-disable-line
+
+  // ── Handle content selection (clear timer) ──
+  const handleSelect = useCallback((c: Content) => {
+    if (autoCompleteTimer.current) clearTimeout(autoCompleteTimer.current);
+    setActiveContent(c);
+  }, [setActiveContent]);
+
+  // ── Keyboard shortcuts for lesson navigation (ArrowLeft / ArrowRight) ──
+  const flatContents = useMemo(() => {
+    return sections.flatMap((s) => sectionContents[s.id] ?? []);
+  }, [sections, sectionContents]);
+
+  const currentIndex = useMemo(() => {
+    if (!activeContent) return -1;
+    return flatContents.findIndex((c) => c.id === activeContent.id);
+  }, [flatContents, activeContent]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = document.activeElement as HTMLElement | null;
+      const activeTag = target?.tagName?.toLowerCase();
+      if (activeTag === "input" || activeTag === "textarea" || target?.isContentEditable) {
+        return;
+      }
+      if (e.key === "ArrowLeft" && currentIndex > 0) {
+        e.preventDefault();
+        handleSelect(flatContents[currentIndex - 1]);
+      } else if (e.key === "ArrowRight" && currentIndex >= 0 && currentIndex < flatContents.length - 1) {
+        e.preventDefault();
+        handleSelect(flatContents[currentIndex + 1]);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentIndex, flatContents, handleSelect]);
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  if (!activeContent) {
+    return (
+      /* Welcome screen */
+      <div className="flex flex-col items-center justify-center h-full py-24 text-center px-8">
+        <div className="relative w-24 h-24 rounded-3xl bg-gradient-to-tr from-blue-500/10 to-cyan-500/10 dark:from-blue-500/20 dark:to-cyan-500/20 flex items-center justify-center mb-8 border border-blue-500/20 dark:border-cyan-400/20 shadow-[0_0_30px_rgba(59,130,246,0.15)] dark:shadow-[0_0_40px_rgba(34,211,238,0.1)] group">
+          <div className="w-16 h-16 rounded-2xl bg-white dark:bg-[#0F1E35] border border-slate-200 dark:border-blue-500/10 flex items-center justify-center shadow-sm">
+            <BookOpen className="w-8 h-8 text-blue-600 dark:text-cyan-400" />
+          </div>
+        </div>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-50 mb-2">
+          Chào mừng đến với khóa học
+        </h2>
+        <p className="text-sm text-slate-600 dark:text-slate-400 max-w-sm mb-8 leading-relaxed">
+          {course?.description ?? "Chọn một bài học ở bên trái để bắt đầu học."}
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {sections.length > 0 && (
+            <button
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm transition-all duration-200 active:scale-95 shadow-md shadow-blue-600/10 hover:shadow-blue-600/20 cursor-pointer"
+              onClick={() => toggleSection(sections[0].id)}
+            >
+              Bắt đầu học ngay
+            </button>
+          )}
+          <button
+            className="flex items-center gap-1.5 px-5 py-3 text-sm font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-[#0F1E35] dark:hover:bg-[#162644] text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-blue-500/10 rounded-xl transition-all duration-200 active:scale-95 sm:hidden cursor-pointer"
+            onClick={() => router.push(`/lms/student/courses/${courseId}/stats`)}
+          >
+            <BarChart3 className="w-4 h-4" />
+            Xem thống kê
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 w-full max-w-6xl mx-auto space-y-6">
+      {/* ── Content Header Section (No heavy card container) ── */}
+      <div className="border-b border-slate-200/80 dark:border-blue-500/10 pb-5">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <ContentTypeBadge type={activeContent.type} />
+          {activeContent.is_mandatory && (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-500/20">
+              Bắt buộc học
+            </span>
+          )}
+          {activeContent.is_mandatory && completedIds.has(activeContent.id) ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-500/20">
+              ✓ Đã hoàn thành
+            </span>
+          ) : activeContent.is_mandatory ? (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-[#0D192E] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-blue-500/10">
+              Chưa hoàn thành
+            </span>
+          ) : null}
+        </div>
+
+        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50 leading-snug">
+          {activeContent.title}
+        </h2>
+        {activeContent.description && (
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 font-medium leading-relaxed max-w-3xl">
+            {activeContent.description}
+          </p>
+        )}
+      </div>
+
+      {/* ── Seamless Content Viewer Area ── */}
+      <div className="min-h-[400px]">
+        <ContentViewer
+          content={activeContent}
+          userRole={isCourseTeacher ? "TEACHER" : "STUDENT"}
+          isCompleted={completedIds.has(activeContent.id)}
+          courseId={courseId}
+          onComplete={() => handleMarkComplete(activeContent.id)}
+        />
+      </div>
+
+      {/* ── Confirmation Alert (If mandatory and uncompleted) ── */}
+      {activeContent.is_mandatory &&
+       !completedIds.has(activeContent.id) &&
+       activeContent.type !== "QUIZ" && (
+        <div className="bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-500/20 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Xác nhận hoàn thành bài học
+            </h4>
+            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md leading-relaxed">
+              Bài học này là bắt buộc. Tự động ghi nhận sau khi học xong, hoặc bạn có thể click xác nhận thủ công.
+            </p>
+          </div>
+          <button
+            onClick={() => handleMarkComplete(activeContent.id)}
+            disabled={markingComplete}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg font-semibold text-xs transition-all duration-200 active:scale-95 cursor-pointer flex-shrink-0"
+          >
+            {markingComplete ? (
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            Hoàn thành bài học
+          </button>
+        </div>
+      )}
+
+      {/* ── Seamless Prev / Next Navigation Footer ── */}
+      <div className="pt-4 border-t border-slate-200/60 dark:border-blue-500/10">
+        <PrevNextButtons
+          sections={sections}
+          sectionContents={sectionContents}
+          activeContent={activeContent}
+          onSelect={handleSelect}
+        />
+      </div>
+    </div>
+  );
+}

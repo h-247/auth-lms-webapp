@@ -1,0 +1,193 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu, LogOut, Sun, Moon, Settings } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { UserAvatar } from "@/components/user/UserAvatar";
+import { sidebarSections, LogoIcon } from "@/constants";
+import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
+import { useUser } from "@/store/UserContext";
+import { useAuth } from "@/hooks/auth/useAuth";
+import { useTheme } from "next-themes";
+import SafeImage from "../common/SafeImage";
+import lmsService from "@/services/lms/lmsService";
+import { logout } from "@/services/auth/logout";
+
+const MobileNav = () => {
+  const pathname = usePathname();
+  const { user, setUser } = useUser();
+  const { isAdmin } = useAuth();
+  const { theme, setTheme } = useTheme();
+  const [isOpen, setIsOpen] = useState(false);
+  const [lmsRoles, setLmsRoles] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (user) {
+      lmsService.getMyRoles()
+        .then(roles => {
+          if (roles) setLmsRoles(roles);
+        })
+        .catch(err => console.error("Error fetching LMS roles for MobileNav:", err));
+    }
+  }, [user]);
+
+  const handleLogout = async () => {
+    setUser(null);
+    await logout();
+    setIsOpen(false);
+  };
+
+  return (
+    <header className="flex md:hidden items-center h-14 px-3 sticky top-0 z-50
+                       bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+      <Sheet open={isOpen} onOpenChange={setIsOpen}>
+        <SheetTrigger asChild>
+          <button className="p-2 rounded-xl text-slate-600 dark:text-slate-400
+                             hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            <Menu className="h-5 w-5" />
+            <span className="sr-only">Mở trình đơn</span>
+          </button>
+        </SheetTrigger>
+
+        <SheetContent side="left" className="flex flex-col p-0 w-64
+                                              bg-white dark:bg-slate-900
+                                              border-r border-slate-200 dark:border-slate-800">
+          {/* Logo */}
+          <Link
+            href="/"
+            onClick={() => setIsOpen(false)}
+            className="flex items-center gap-2.5 px-4 py-5 border-b border-slate-200 dark:border-slate-800 hover:opacity-85 transition-opacity"
+            title="Trang chủ BDC Hub"
+          >
+            <SafeImage src={LogoIcon} alt="BDC" width={28} height={28} priority />
+            <div>
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-50">Think Big</p>
+              <p className="text-xs text-blue-600 font-semibold tracking-wide">Speak Data</p>
+            </div>
+          </Link>
+
+          {/* User */}
+          <div className="px-3 py-3 border-b border-slate-200 dark:border-slate-800">
+            <Link
+              href="/myaccount"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <UserAvatar name={user?.name} src={user?.profilePicture || (user as any)?.image} className="h-8 w-8" fallbackClassName="text-xs" />
+              <div>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{user?.name || "Guest"}</p>
+                <p className="text-xs text-slate-500">{user?.role?.replace("ROLE_", "") || "Thành viên"}</p>
+              </div>
+            </Link>
+          </div>
+
+          {/* Nav */}
+          <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+            {sidebarSections
+              .map((section) => {
+                const filteredLinks = section.links.filter((link) => {
+                  if (isAdmin) return true;
+                  
+                  const selectedRole = typeof window !== "undefined" ? sessionStorage.getItem("lms_selected_role") : null;
+                  const isTeacher = user?.role === "ROLE_TEACHER" || user?.role === "ROLE_MANAGER" || lmsRoles.includes("TEACHER") || selectedRole === "TEACHER";
+                  
+                  if (link.label === "Hướng dẫn Học viên") {
+                    return true;
+                  }
+                  if (link.label === "Hướng dẫn Giảng viên") {
+                    return isTeacher;
+                  }
+                  return link.label === "Khóa học";
+                });
+                return { ...section, links: filteredLinks };
+              })
+              .filter((section) => section.links.length > 0)
+              .map((section, i) => (
+              <div key={section.title}>
+                {i > 0 && <div className="border-t border-slate-200 dark:border-slate-800 mb-3" />}
+                <p className="text-xs font-semibold text-slate-400 dark:text-slate-600 uppercase tracking-wider px-3 mb-1.5">
+                  {section.title}
+                </p>
+                <ul className="space-y-0.5">
+                  {section.links.map((link) => {
+                    const isActive = pathname === link.route;
+                    const Icon = link.icon;
+                    const isExternal = link.route.startsWith("http");
+                    return (
+                      <li key={link.route}>
+                        <Link
+                          href={link.route}
+                          target={isExternal ? "_blank" : undefined}
+                          rel={isExternal ? "noopener noreferrer" : undefined}
+                          onClick={() => setIsOpen(false)}
+                          className={cn(
+                            "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors duration-200",
+                            isActive
+                              ? "bg-blue-600 text-white"
+                              : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          )}
+                        >
+                          <Icon className="h-4 w-4 flex-shrink-0" />
+                          {link.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </nav>
+
+          {/* Footer */}
+          <div className="border-t border-slate-200 dark:border-slate-800 p-2 space-y-0.5">
+            {isAdmin && (
+              <Link
+                href="/settings"
+                onClick={() => setIsOpen(false)}
+                className={cn(
+                  "w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors duration-200",
+                  pathname.startsWith("/settings")
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                )}
+              >
+                <Settings className="h-4 w-4" />
+                Cài đặt
+              </Link>
+            )}
+            <button
+              onClick={() => { setTheme(theme === "light" ? "dark" : "light"); setIsOpen(false); }}
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium
+                         text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {theme === "dark" ? "Chế độ sáng" : "Chế độ tối"}
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium
+                         text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Đăng xuất
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Center logo */}
+      <div className="flex-1 flex justify-center">
+        <Link href="/" className="flex items-center gap-2">
+          <SafeImage src={LogoIcon} alt="BDC" width={28} height={28} priority />
+        </Link>
+      </div>
+
+      {/* Spacer to balance menu button */}
+      <div className="w-9" />
+    </header>
+  );
+};
+
+export default MobileNav;

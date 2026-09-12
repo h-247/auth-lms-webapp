@@ -1,0 +1,100 @@
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // Bypass token check and session lookup for public file paths to optimize performance
+  if (
+    pathname.startsWith("/files/") ||
+    pathname.startsWith("/lmsapiv1/files/serve/") ||
+    pathname.startsWith("/lmsapiv1/files/download/")
+  ) {
+    return NextResponse.next();
+  }
+
+  // If authorization header is already present, just pass the request through.
+  // This avoids Next.js request-cloning bugs for multipart form-data (uploads).
+  if (
+    (pathname.startsWith("/apiv1/") ||
+      pathname.startsWith("/lmsapiv1/") ||
+      pathname.startsWith("/uploads/")) &&
+    req.headers.has("Authorization")
+  ) {
+    return NextResponse.next();
+  }
+
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+    cookieName: process.env.NODE_ENV === "production"
+      ? "__Secure-bdc.session-token.v2"
+      : "bdc.session-token.v2",
+  });
+
+  // Preserve a deep LMS link across login. The client route guard will then
+  // verify the user's actual LMS role before rendering the destination.
+  if (pathname === "/lms" || pathname.startsWith("/lms/")) {
+    if (!token || !token.accessToken || (token as any).error === "RefreshAccessTokenError") {
+      const loginUrl = new URL("/login", req.url);
+      loginUrl.searchParams.set("callbackUrl", `${pathname}${req.nextUrl.search}`);
+      return NextResponse.redirect(loginUrl);
+    }
+    return NextResponse.next();
+  }
+
+  // We only care about proxy paths
+  if (
+    pathname.startsWith("/apiv1/") ||
+    pathname.startsWith("/lmsapiv1/") ||
+    pathname.startsWith("/uploads/")
+  ) {
+    const requestHeaders = new Headers(req.headers);
+
+    if (token?.accessToken) {
+      requestHeaders.set("Authorization", `Bearer ${token.accessToken}`);
+      return NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
+    }
+
+    return NextResponse.next();
+  }
+
+  // Check admin-only paths
+  const adminPaths = [
+    "/users",
+    "/settings",
+  ];
+
+  const isAdminPath = adminPaths.some(
+    (path) => pathname === path || pathname.startsWith(path + "/")
+  );
+
+  if (isAdminPath) {
+    if (!token) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+
+    if (token.role !== "ROLE_ADMIN") {
+      return NextResponse.redirect(new URL("/lms", req.url));
+    }
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    "/apiv1/:path*",
+    "/lmsapiv1/:path*",
+    "/uploads/:path*",
+    "/files/:path*",
+    "/lms/:path*",
+    "/users/:path*",
+    "/settings/:path*",
+  ],
+};

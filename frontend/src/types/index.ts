@@ -1,0 +1,12 @@
+/**
+ * BDCHub Frontend Types Central Barrel Export
+ * Domain-Driven Architecture
+ */
+
+export * from "./auth";
+export * from "./lms";
+export * from "./ai";
+export * from "./chat";
+export * from "./labs";
+export * from "./admin";
+export * from "./forms";
