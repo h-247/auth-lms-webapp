@@ -1,0 +1,354 @@
+name: bdc-auth-lms
+
+x-common-healthcheck: &common-healthcheck
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 20s
+
+x-common-logging: &common-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  traefik:
+    image: traefik:v3.6
+    container_name: auth-lms-proxy
+    restart: unless-stopped
+    command:
+      - --api.insecure=false
+      - --ping=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=auth-lms-network
+      - --entrypoints.web.address=:3000
+      - --log.level=INFO
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - auth-lms-network
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging: *common-logging
+
+  kafka:
+    image: bitnamilegacy/kafka:3.7.0
+    container_name: auth-lms-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_NUM_PARTITIONS: 3
+    volumes:
+      - auth_lms_kafka_data:/bitnami/kafka
+    networks:
+      - auth-lms-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server 127.0.0.1:9092 --list"]
+      <<: *common-healthcheck
+    security_opt:
+      - no-new-privileges:true
+    logging: *common-logging
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: auth-lms-postgres-auth
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AUTH_DB_NAME}
+      POSTGRES_USER: ${AUTH_DB_USER}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: -E UTF8 --locale=C
+    ports:
+      - "${AUTH_DB_PORT:-5433}:5432"
+    volumes:
+      - auth_lms_postgres_data:/var/lib/postgresql/data
+    networks:
+      - auth-lms-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      <<: *common-healthcheck
+    security_opt:
+      - no-new-privileges:true
+    logging: *common-logging
+
+  postgres-lms:
+    image: postgres:15-alpine
+    container_name: auth-lms-postgres-lms
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${LMS_DB_NAME}
+      POSTGRES_USER: ${LMS_DB_USER}
+      POSTGRES_PASSWORD: ${LMS_DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: -E UTF8 --locale=C
+    ports:
+      - "${LMS_DB_PORT:-5434}:5432"
+    volumes:
+      - auth_lms_postgres_lms_data:/var/lib/postgresql/data
+      - ./lms-service/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - auth-lms-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      <<: *common-healthcheck
+    security_opt:
+      - no-new-privileges:true
+    logging: *common-logging
+
+  redis-lms:
+    image: redis:7-alpine
+    container_name: auth-lms-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - auth_lms_redis_data:/data
+    networks:
+      - auth-lms-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      <<: *common-healthcheck
+    security_opt:
+      - no-new-privileges:true
+    logging: *common-logging
+
+  backend:
+    build:
+      context: ./auth-and-management-service
+      dockerfile: ../docker/Dockerfile.auth-local
+    image: bdc-auth-lms/auth:local
+    container_name: auth-lms-auth
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KAFKA_BROKERS: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${AUTH_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${AUTH_DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${AUTH_DB_PASSWORD}
+      POSTGRES_DB: ${AUTH_DB_NAME}
+      POSTGRES_USER: ${AUTH_DB_USER}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
+      LMS_API_URL: http://lms-backend:8081
+      LMS_API_SECRET: ${LMS_SYNC_SECRET}
+      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
+      AI_SERVICE_URL: http://127.0.0.1:9
+      AI_SERVICE_SECRET: disabled-local-only
+      CHAT_API_URL: ""
+      CHAT_SYNC_SECRET: ""
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MS: 3600000
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      APP_TEACHER_EMAIL: ${TEACHER_EMAIL:-teacher@example.local}
+      APP_TEACHER_PASSWORD: ${TEACHER_PASSWORD:-teacher123}
+      APP_STUDENT_EMAIL: ${STUDENT_EMAIL:-student@example.local}
+      APP_STUDENT_PASSWORD: ${STUDENT_PASSWORD:-student123}
+      CORS_ALLOWED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+      APP_PUBLIC_URL: http://localhost:${FRONTEND_PORT:-3000}
+      GOOGLE_CLIENT_ID: ""
+      EMAIL: ""
+      EMAIL_PASSWORD: ""
+      LOG_LEVEL: INFO
+    ports:
+      - "${AUTH_PORT:-8080}:8080"
+    volumes:
+      - auth_lms_upload_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - auth-lms-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health/liveness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    logging: *common-logging
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.auth-lms-auth.entrypoints=web
+      - traefik.http.routers.auth-lms-auth.rule=PathPrefix(`/apiv1`)
+      - traefik.http.routers.auth-lms-auth.priority=100
+      - traefik.http.services.auth-lms-auth.loadbalancer.server.port=8080
+      - traefik.http.middlewares.auth-lms-strip-auth.stripprefix.prefixes=/apiv1
+      - traefik.http.routers.auth-lms-auth.middlewares=auth-lms-strip-auth
+
+  lms-backend:
+    build:
+      context: ./lms-service
+      dockerfile: Dockerfile
+      args:
+        BUILD_DATE: local
+        VERSION: auth-lms-local
+    image: bdc-auth-lms/lms:local
+    container_name: auth-lms-lms
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      APP_PORT: 8081
+      APP_NAME: LMS Service
+      LMS_SYNC_SECRET: ${LMS_SYNC_SECRET}
+      DB_HOST: postgres-lms
+      DB_PORT: 5432
+      DB_USER: ${LMS_DB_USER}
+      DB_PASSWORD: ${LMS_DB_PASSWORD}
+      DB_NAME: ${LMS_DB_NAME}
+      DB_SSL_MODE: disable
+      KAFKA_BROKERS: kafka:9092
+      REDIS_HOST: redis-lms
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 0
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_HOURS: 1
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_PATH: /app/uploads
+      UPLOAD_DIR: /app/uploads
+      AUTH_SERVICE_URL: http://backend:8080
+      AUTH_SERVICE_TIMEOUT: 10s
+      AI_SERVICE_URL: http://127.0.0.1:9
+      AI_SERVICE_SECRET: disabled-local-only
+      CORS_ALLOWED_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+      CORS_ALLOWED_METHODS: GET,POST,PUT,DELETE,OPTIONS,PATCH
+      CORS_ALLOWED_HEADERS: Authorization,Content-Type,Accept
+    ports:
+      - "${LMS_PORT:-8081}:8081"
+    volumes:
+      - auth_lms_lms_upload_data:/app/uploads
+    depends_on:
+      postgres-lms:
+        condition: service_healthy
+      redis-lms:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - auth-lms-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    logging: *common-logging
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.auth-lms-lms.entrypoints=web
+      - traefik.http.routers.auth-lms-lms.rule=PathPrefix(`/lmsapiv1`)
+      - traefik.http.routers.auth-lms-lms.priority=100
+      - traefik.http.services.auth-lms-lms.loadbalancer.server.port=8081
+      - traefik.http.middlewares.auth-lms-rewrite-lms.replacepathregex.regex=^/lmsapiv1/(.*)
+      - traefik.http.middlewares.auth-lms-rewrite-lms.replacepathregex.replacement=/api/v1/$${1}
+      - traefik.http.routers.auth-lms-lms.middlewares=auth-lms-rewrite-lms
+      - traefik.http.routers.auth-lms-files.entrypoints=web
+      - traefik.http.routers.auth-lms-files.rule=PathPrefix(`/files`)
+      - traefik.http.routers.auth-lms-files.priority=100
+      - traefik.http.routers.auth-lms-files.service=auth-lms-lms
+      - traefik.http.middlewares.auth-lms-rewrite-files.replacepathregex.regex=^/files/(.*)
+      - traefik.http.middlewares.auth-lms-rewrite-files.replacepathregex.replacement=/api/v1/files/serve/$${1}
+      - traefik.http.routers.auth-lms-files.middlewares=auth-lms-rewrite-files
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BUILD_DATE: local
+        VERSION: auth-lms-local
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
+        NEXT_PUBLIC_YOUTUBE_UPLOAD_ENABLED: "false"
+        NEXT_PUBLIC_CHAT_WS_URL: ws://127.0.0.1:9
+        BACKEND_URL: http://backend:8080
+        LMS_API_URL: http://lms-backend:8081
+        LAB_API_URL: http://127.0.0.1:9
+        CHAT_API_URL: http://127.0.0.1:9
+        AI_SERVICE_URL: http://127.0.0.1:9
+        NEXTAUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
+    image: bdc-auth-lms/frontend:local
+    container_name: auth-lms-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+      BACKEND_URL: http://backend:8080
+      LMS_API_URL: http://lms-backend:8081
+      LAB_API_URL: http://127.0.0.1:9
+      CHAT_API_URL: http://127.0.0.1:9
+      AI_SERVICE_URL: http://127.0.0.1:9
+      RECOMMENDER_SERVICE_URL: http://127.0.0.1:9
+      PERSONALIZE_SERVICE_URL: http://127.0.0.1:9
+      NEXTAUTH_URL: http://localhost:${FRONTEND_PORT:-3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ""
+      NEXT_PUBLIC_YOUTUBE_UPLOAD_ENABLED: "false"
+      NEXT_PUBLIC_CHAT_WS_URL: ws://127.0.0.1:9
+      AI_SERVICE_SECRET: disabled-local-only
+      NEXT_TELEMETRY_DISABLED: 1
+    depends_on:
+      backend:
+        condition: service_healthy
+      lms-backend:
+        condition: service_healthy
+    networks:
+      - auth-lms-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    logging: *common-logging
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.auth-lms-frontend.entrypoints=web
+      - traefik.http.routers.auth-lms-frontend.rule=PathPrefix(`/`)
+      - traefik.http.routers.auth-lms-frontend.priority=1
+      - traefik.http.services.auth-lms-frontend.loadbalancer.server.port=3001
+
+volumes:
+  auth_lms_postgres_data:
+  auth_lms_postgres_lms_data:
+  auth_lms_redis_data:
+  auth_lms_upload_data:
+  auth_lms_lms_upload_data:
+  auth_lms_kafka_data:
+
+networks:
+  auth-lms-network:
+    name: auth-lms-network
+    driver: bridge

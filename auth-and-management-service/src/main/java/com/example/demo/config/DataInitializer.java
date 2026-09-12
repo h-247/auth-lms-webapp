@@ -22,6 +22,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.Set;
+
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
@@ -44,6 +46,18 @@ public class DataInitializer implements CommandLineRunner {
     @org.springframework.beans.factory.annotation.Value("${app.admin.email:phucnhan289@gmail.com}")
     private String adminEmail;
 
+    @org.springframework.beans.factory.annotation.Value("${app.teacher.email:teacher@example.local}")
+    private String teacherEmail;
+
+    @org.springframework.beans.factory.annotation.Value("${app.teacher.password:teacher123}")
+    private String teacherPassword;
+
+    @org.springframework.beans.factory.annotation.Value("${app.student.email:student@example.local}")
+    private String studentEmail;
+
+    @org.springframework.beans.factory.annotation.Value("${app.student.password:student123}")
+    private String studentPassword;
+
     @Override
     public void run(String... args) {
         try {
@@ -61,11 +75,11 @@ public class DataInitializer implements CommandLineRunner {
         seedTypes();
         seedAdminUser();
 
-        log.info("Triggering automatic startup sync of existing users to chat-service...");
+        log.info("Triggering automatic startup sync of existing users to downstream services...");
         try {
-            userSyncService.syncUsersToChat(userRepository.findAll());
+            userSyncService.syncUsers(userRepository.findAll());
         } catch (Exception e) {
-            log.error("Startup user sync to chat failed: {}", e.getMessage());
+            log.error("Startup user sync failed: {}", e.getMessage());
         }
     }
 
@@ -111,25 +125,74 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void seedAdminUser() {
-        if (userRepository.count() > 0) {
-            log.debug("Database already seeded, skipping admin user creation");
+        seedLocalUser(
+                SeedUser.builder()
+                        .name("Nguyễn Phúc Nhân")
+                        .email(adminEmail)
+                        .rawPassword(adminPassword)
+                        .role(UserRole.ROLE_ADMIN)
+                        .lmsRole("ADMIN")
+                        .team(UserTeam.RESEARCH)
+                        .code("000000")
+                        .type(UserType.DT)
+                        .totalScore(10000)
+                        .build()
+        );
+        seedLocalUser(
+                SeedUser.builder()
+                        .name("Local Teacher")
+                        .email(teacherEmail)
+                        .rawPassword(teacherPassword)
+                        .role(UserRole.ROLE_MANAGER)
+                        .lmsRole("TEACHER")
+                        .team(UserTeam.ENGINEER)
+                        .code("000001")
+                        .type(UserType.DT)
+                        .totalScore(1000)
+                        .build()
+        );
+        seedLocalUser(
+                SeedUser.builder()
+                        .name("Local Student")
+                        .email(studentEmail)
+                        .rawPassword(studentPassword)
+                        .role(UserRole.ROLE_USER)
+                        .lmsRole("STUDENT")
+                        .team(UserTeam.RESEARCH)
+                        .code("000002")
+                        .type(UserType.DT)
+                        .totalScore(100)
+                        .build()
+        );
+    }
+
+    private void seedLocalUser(SeedUser seed) {
+        if (userRepository.existsByEmail(seed.email())) {
+            log.debug("Seed user already exists, skipping {}", seed.email());
             return;
         }
 
-        var admin = User.builder()
-                .name("Nguyễn Phúc Nhân")
-                .email(adminEmail)
-                .password(passwordEncoder.encode(adminPassword))
-                .role(UserRole.ROLE_ADMIN)
-                .team(UserTeam.RESEARCH)
-                .code("000000")
-                .type(UserType.DT)
-                .totalScore(10000)
+        if (userRepository.existsByCode(seed.code())) {
+            log.warn("Cannot seed {} because code {} already exists", seed.email(), seed.code());
+            return;
+        }
+
+        var user = User.builder()
+                .name(seed.name())
+                .email(seed.email())
+                .password(passwordEncoder.encode(seed.rawPassword()))
+                .role(seed.role())
+                .roles(Set.of(seed.role()))
+                .lmsRoles(Set.of(seed.lmsRole()))
+                .team(seed.team())
+                .code(seed.code())
+                .type(seed.type())
+                .totalScore(seed.totalScore())
                 .active(true)
                 .build();
 
-        userRepository.save(admin);
-        log.info("Default admin user created: {}", adminEmail);
+        userRepository.save(user);
+        log.info("Seed user created: {} ({})", seed.email(), seed.lmsRole());
     }
 
     private void seedTeams() {
@@ -152,4 +215,17 @@ public class DataInitializer implements CommandLineRunner {
 
         log.info("Default user types seeded successfully.");
     }
+
+    @lombok.Builder
+    private record SeedUser(
+            String name,
+            String email,
+            String rawPassword,
+            String role,
+            String lmsRole,
+            String team,
+            String code,
+            String type,
+            Integer totalScore
+    ) {}
 }
